@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+Disallow: /server/
+
+Sitemap: https://vijayprasanth.dev/sitemap.xml

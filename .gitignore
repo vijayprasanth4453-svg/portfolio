@@ -1,0 +1,48 @@
+# Node dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.local
+.env.*
+
+# Stored messages (backend)
+# The server stores incoming messages; keep these out of git to protect privacy
+server/data/messages.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/project settings
+.vscode/
+.idea/
+
+# Build output
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.swp
+
+# Resume or private assets (uncomment to ignore resume file)
+# assets/resume/*
+
+# Certificates / keys
+*.pem
+*.key
+
+# Lock files (optional - keep if you want deterministic installs)
+# package-lock.json
+# yarn.lock
+
+# Coverage
+coverage/
+
+# Desktop.ini
+Desktop.ini

@@ -9,8 +9,11 @@
   const $$ = (s, c = document) => Array.from(c.querySelectorAll(s));
 
   /* ---------- Config ---------- */
-  // Backend API endpoint. Change to your deployed server URL in production.
-  const API_URL = 'http://localhost:5000/api/contact';
+  // Uses same host as the page (works for localhost, LAN IP, and deployed domains).
+  // Override in production via: <meta name="api-base" content="https://your-api.example.com" />
+  const API_BASE = document.querySelector('meta[name="api-base"]')?.content?.trim()
+    || `${window.location.protocol}//${window.location.hostname}:5000`;
+  const API_URL = `${API_BASE.replace(/\/$/, '')}/api/contact`;
   // EmailJS fallback (optional). Fill these if you want a client-only fallback.
   const EMAILJS = { enabled: false, serviceId: '', templateId: '', publicKey: '' };
 
@@ -78,15 +81,27 @@
 
   /* ---------- Reveal on scroll ---------- */
   function initReveal() {
-    const items = $$('.reveal');
+    $$('.reveal-stagger').forEach(container => {
+      Array.from(container.children).forEach((child, i) => {
+        child.style.setProperty('--i', String(i));
+      });
+    });
+
+    const items = $$('.reveal, .reveal-stagger');
     if (!('IntersectionObserver' in window)) {
-      items.forEach(i => i.classList.add('is-visible'));
+      items.forEach(i => {
+        i.classList.add('is-visible');
+        $$('.tech:not(.is-hidden)', i).forEach(t => t.classList.add('is-visible'));
+      });
       return;
     }
     const io = new IntersectionObserver((entries) => {
       entries.forEach(e => {
         if (e.isIntersecting) {
           e.target.classList.add('is-visible');
+          if (e.target.classList.contains('reveal-stagger')) {
+            $$('.tech:not(.is-hidden)', e.target).forEach(t => t.classList.add('is-visible'));
+          }
           io.unobserve(e.target);
         }
       });
@@ -120,122 +135,30 @@
     counters.forEach(c => io.observe(c));
   }
 
-  /* ---------- Skill tech tiles ---------- */
   function initSkillBars() {
     const tiles = $$('.tech');
-
-    // Category filter
     const pills = $$('.skillfilter__pill');
+
     function applyFilter(filter) {
-      tiles.forEach(t => {
+      tiles.forEach((t, i) => {
         const show = t.dataset.cat === filter;
         t.classList.toggle('is-hidden', !show);
+        if (show) {
+          t.style.setProperty('--i', String(i));
+          t.classList.remove('is-visible');
+          requestAnimationFrame(() => t.classList.add('is-visible'));
+        }
       });
     }
+
     pills.forEach(pill => pill.addEventListener('click', () => {
       pills.forEach(p => p.classList.remove('is-active'));
       pill.classList.add('is-active');
       applyFilter(pill.dataset.filter);
     }));
 
-    // Default to the active pill (Frontend)
     const active = document.querySelector('.skillfilter__pill.is-active');
     applyFilter(active ? active.dataset.filter : 'frontend');
-  }
-
-  /* ---------- Skill radar chart ---------- */
-  function initRadar() {
-    const canvas = $('#radarCanvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const data = [
-      { label: 'Frontend', value: 0.93 },
-      { label: 'Backend', value: 0.9 },
-      { label: 'Database', value: 0.85 },
-      { label: 'DevOps', value: 0.8 },
-      { label: 'Programming', value: 0.82 },
-      { label: 'AI', value: 0.86 }
-    ];
-    const cx = canvas.width / 2, cy = canvas.height / 2;
-    const radius = Math.min(cx, cy) - 50;
-    const n = data.length;
-
-    function point(i, r) {
-      const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
-      return [cx + Math.cos(angle) * r, cy + Math.sin(angle) * r];
-    }
-
-    function render(scale) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // grid rings
-      for (let ring = 1; ring <= 4; ring++) {
-        ctx.beginPath();
-        for (let i = 0; i <= n; i++) {
-          const [x, y] = point(i % n, (radius * ring) / 4);
-          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-        }
-        ctx.strokeStyle = 'rgba(148,163,184,0.18)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-      // axes + labels
-      ctx.fillStyle = 'rgba(148,163,184,0.9)';
-      ctx.font = '12px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      for (let i = 0; i < n; i++) {
-        const [ax, ay] = point(i, radius);
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(ax, ay);
-        ctx.strokeStyle = 'rgba(148,163,184,0.12)';
-        ctx.stroke();
-        const [lx, ly] = point(i, radius + 24);
-        ctx.fillText(data[i].label, lx, ly);
-      }
-      // data polygon
-      ctx.beginPath();
-      for (let i = 0; i <= n; i++) {
-        const idx = i % n;
-        const [x, y] = point(idx, radius * data[idx].value * scale);
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-      }
-      const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-      grad.addColorStop(0, 'rgba(59,130,246,0.45)');
-      grad.addColorStop(0.5, 'rgba(139,92,246,0.45)');
-      grad.addColorStop(1, 'rgba(6,182,212,0.45)');
-      ctx.fillStyle = grad;
-      ctx.strokeStyle = '#8B5CF6';
-      ctx.lineWidth = 2;
-      ctx.fill();
-      ctx.stroke();
-      // vertices
-      for (let i = 0; i < n; i++) {
-        const [x, y] = point(i, radius * data[i].value * scale);
-        ctx.beginPath();
-        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-        ctx.fillStyle = '#06B6D4';
-        ctx.fill();
-      }
-    }
-
-    if (prefersReduced) { render(1); return; }
-    let drawn = false;
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach(e => {
-        if (e.isIntersecting && !drawn) {
-          drawn = true;
-          const start = performance.now();
-          (function anim(now) {
-            const p = Math.min((now - start) / 900, 1);
-            render(1 - Math.pow(1 - p, 3));
-            if (p < 1) requestAnimationFrame(anim);
-          })(start);
-          io.disconnect();
-        }
-      });
-    }, { threshold: 0.4 });
-    io.observe(canvas);
   }
 
   /* ---------- Navigation ---------- */
@@ -243,25 +166,35 @@
     const nav = $('#nav');
     const burger = $('#navBurger');
     const links = $('#navLinks');
+    const backdrop = $('#navBackdrop');
+
+    function setMenuOpen(open) {
+      links.classList.toggle('is-open', open);
+      burger.classList.toggle('is-open', open);
+      nav.classList.toggle('is-menu-open', open);
+      if (backdrop) backdrop.classList.toggle('is-visible', open);
+      document.body.classList.toggle('nav-open', open);
+      burger.setAttribute('aria-expanded', String(open));
+      burger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      if (backdrop) backdrop.setAttribute('aria-hidden', String(!open));
+    }
 
     window.addEventListener('scroll', () => {
       nav.classList.toggle('is-scrolled', window.scrollY > 30);
     }, { passive: true });
 
     burger.addEventListener('click', () => {
-      const open = links.classList.toggle('is-open');
-      burger.classList.toggle('is-open', open);
-      burger.setAttribute('aria-expanded', String(open));
-      burger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      setMenuOpen(!links.classList.contains('is-open'));
     });
 
-    $$('.nav__link', links).forEach(l => l.addEventListener('click', () => {
-      links.classList.remove('is-open');
-      burger.classList.remove('is-open');
-      burger.setAttribute('aria-expanded', 'false');
-    }));
+    if (backdrop) backdrop.addEventListener('click', () => setMenuOpen(false));
 
-    // Active section detection
+    $$('.nav__link', links).forEach(l => l.addEventListener('click', () => setMenuOpen(false)));
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && links.classList.contains('is-open')) setMenuOpen(false);
+    });
+
     const sections = $$('section[id]');
     const navLinks = $$('.nav__link');
     const spy = new IntersectionObserver((entries) => {
@@ -435,6 +368,10 @@
       }
     }
 
+    function clearErrors() {
+      Object.keys(validators).forEach(name => showError(name, true));
+    }
+
     // live validation
     Object.keys(validators).forEach(name => {
       const input = form.querySelector(`[name="${name}"]`);
@@ -443,6 +380,12 @@
         if (input.closest('.field').classList.contains('is-invalid')) {
           showError(name, validators[name](input.value));
         }
+      });
+    });
+
+    form.addEventListener('focusout', () => {
+      requestAnimationFrame(() => {
+        if (!form.contains(document.activeElement)) clearErrors();
       });
     });
 
@@ -458,7 +401,7 @@
         showError(name, res);
         if (res !== true) valid = false;
       });
-      if (!valid) { toast('Please fix the highlighted fields.', 'error'); return; }
+      if (!valid) { toast('Please fill in all required fields.', 'error'); return; }
 
       const payload = {
         name: form.name.value.trim(),
@@ -477,21 +420,23 @@
           body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) throw new Error(data.message || 'Server error');
-        toast('Message sent successfully! I will reply soon.', 'success');
+        if (!data.success) throw new Error(data.message || 'Server error');
+        toast('Message sent successfully.', 'success');
         form.reset();
+        clearErrors();
       } catch (err) {
         // EmailJS fallback
         if (EMAILJS.enabled && window.emailjs) {
           try {
             await window.emailjs.send(EMAILJS.serviceId, EMAILJS.templateId, payload, EMAILJS.publicKey);
-            toast('Message sent successfully (fallback)!', 'success');
+            toast('Message sent successfully.', 'success');
             form.reset();
+            clearErrors();
           } catch (e2) {
             toast('Could not send message. Please email me directly.', 'error');
           }
         } else {
-          toast('Could not reach the server. Please email me directly.', 'error');
+          toast(err.message || 'Could not reach the server. Please email me directly.', 'error');
         }
       } finally {
         btn.classList.remove('is-loading');
@@ -513,7 +458,6 @@
   initReveal();
   initCounters();
   initSkillBars();
-  initRadar();
   initNav();
   initScrollFx();
   initCursorAndParallax();

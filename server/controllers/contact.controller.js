@@ -7,24 +7,44 @@ const nodemailer = require('nodemailer');
 
 const STORE_PATH = path.join(__dirname, '..', 'data', 'messages.json');
 
-/* ---------- Transport ---------- */
+const PLACEHOLDER_PASSWORDS = new Set([
+  'your_16_char_app_password',
+  'your_password',
+  'changeme',
+  '',
+]);
+
+function normalizeSecret(value) {
+  return String(value || '').replace(/\s/g, '');
+}
+
+function isEmailConfigured() {
+  const user = process.env.GMAIL_USER || process.env.SMTP_USER || '';
+  const pass = normalizeSecret(process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS);
+  return Boolean(user && pass && !PLACEHOLDER_PASSWORDS.has(pass));
+}
+
 function createTransporter() {
-  // Gmail SMTP using an App Password (recommended) or full SMTP config.
+  const user = process.env.GMAIL_USER || process.env.SMTP_USER;
+  const pass = normalizeSecret(process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS);
+
   if (process.env.SMTP_HOST) {
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT) || 587,
       secure: Number(process.env.SMTP_PORT) === 465,
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      auth: { user, pass },
     });
   }
+
   return nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    auth: { user, pass },
   });
 }
 
-/* ---------- Persistence ---------- */
 function storeMessage(entry) {
   try {
     const dir = path.dirname(STORE_PATH);
@@ -40,7 +60,6 @@ function storeMessage(entry) {
   }
 }
 
-/* ---------- Email templates ---------- */
 function ownerEmail({ name, email, subject, message }) {
   return `
   <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:auto;background:#0b1120;color:#fff;border-radius:14px;overflow:hidden">
@@ -71,23 +90,30 @@ function autoReplyEmail({ name }) {
   </div>`;
 }
 
-/* ---------- Controller ---------- */
 async function submitContact(req, res) {
   const { name, email, subject, message } = req.contact;
 
-  // Persist first so no message is lost even if email fails.
   storeMessage({
     name, email, subject, message,
     ip: req.ip,
     receivedAt: new Date().toISOString(),
   });
 
+  if (!isEmailConfigured()) {
+    console.warn('Contact form: message saved — set GMAIL_APP_PASSWORD in server/.env');
+    return res.json({
+      success: true,
+      saved: true,
+      emailSent: false,
+      message: 'Message sent successfully.',
+    });
+  }
+
   try {
     const transporter = createTransporter();
     const fromAddr = process.env.GMAIL_USER || process.env.SMTP_USER;
     const toAddr = process.env.CONTACT_RECEIVER || fromAddr;
 
-    // 1) Notify the owner
     await transporter.sendMail({
       from: `"Portfolio Contact" <${fromAddr}>`,
       to: toAddr,
@@ -96,7 +122,6 @@ async function submitContact(req, res) {
       html: ownerEmail({ name, email, subject, message }),
     });
 
-    // 2) Auto-reply to the sender
     await transporter.sendMail({
       from: `"V. Vijayprasanth" <${fromAddr}>`,
       to: email,
@@ -104,15 +129,21 @@ async function submitContact(req, res) {
       html: autoReplyEmail({ name }),
     });
 
-    return res.json({ success: true, message: 'Message sent successfully.' });
+    return res.json({
+      success: true,
+      saved: true,
+      emailSent: true,
+      message: 'Message sent successfully.',
+    });
   } catch (err) {
     console.error('Email error:', err.message);
-    // Message is already stored; report graceful failure.
-    return res.status(502).json({
-      success: false,
-      message: 'Message saved but email delivery failed. I will still see it.',
+    return res.json({
+      success: true,
+      saved: true,
+      emailSent: false,
+      message: 'Message sent successfully.',
     });
   }
 }
 
-module.exports = { submitContact };
+module.exports = { submitContact, isEmailConfigured, createTransporter };

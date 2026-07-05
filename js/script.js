@@ -88,25 +88,43 @@
     });
 
     const items = $$('.reveal, .reveal-stagger');
-    if (!('IntersectionObserver' in window)) {
-      items.forEach(i => {
-        i.classList.add('is-visible');
-        $$('.tech:not(.is-hidden)', i).forEach(t => t.classList.add('is-visible'));
-      });
+    const show = (el) => {
+      el.classList.add('is-visible');
+      if (el.classList.contains('reveal-stagger')) {
+        $$('.tech:not(.is-hidden)', el).forEach(t => t.classList.add('is-visible'));
+      }
+    };
+
+    if (prefersReduced || !('IntersectionObserver' in window)) {
+      items.forEach(show);
       return;
     }
+
+    /* Hero content should be visible immediately on load */
+    $$('#hero .reveal, #hero .reveal-stagger').forEach(show);
+
+    const isMobile = window.matchMedia('(max-width: 760px)').matches;
     const io = new IntersectionObserver((entries) => {
       entries.forEach(e => {
         if (e.isIntersecting) {
-          e.target.classList.add('is-visible');
-          if (e.target.classList.contains('reveal-stagger')) {
-            $$('.tech:not(.is-hidden)', e.target).forEach(t => t.classList.add('is-visible'));
-          }
+          show(e.target);
           io.unobserve(e.target);
         }
       });
-    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
-    items.forEach(i => io.observe(i));
+    }, {
+      threshold: isMobile ? 0.05 : 0.12,
+      rootMargin: isMobile ? '0px 0px 0px 0px' : '0px 0px -40px 0px'
+    });
+
+    items.forEach(i => {
+      if (i.classList.contains('is-visible')) return;
+      io.observe(i);
+    });
+
+    /* Fallback: ensure nothing stays hidden if observer misses */
+    window.setTimeout(() => items.forEach(i => {
+      if (!i.classList.contains('is-visible')) show(i);
+    }), 2500);
   }
 
   /* ---------- Counters ---------- */
@@ -167,6 +185,7 @@
     const burger = $('#navBurger');
     const links = $('#navLinks');
     const backdrop = $('#navBackdrop');
+    if (!nav || !burger || !links) return;
 
     function setMenuOpen(open) {
       links.classList.toggle('is-open', open);
@@ -263,8 +282,9 @@
   function initTheme() {
     const toggle = $('#themeToggle');
     const root = document.documentElement;
+    if (!toggle) return;
     const saved = localStorage.getItem('theme');
-    if (saved) root.setAttribute('data-theme', saved);
+    if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
     toggle.addEventListener('click', () => {
       const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
       root.setAttribute('data-theme', next);

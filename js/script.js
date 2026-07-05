@@ -285,10 +285,20 @@
     if (!toggle) return;
     const saved = localStorage.getItem('theme');
     if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
+
+    function syncThemeLabel() {
+      const isLight = root.getAttribute('data-theme') === 'light';
+      const label = isLight ? 'Switch to dark mode' : 'Switch to light mode';
+      toggle.setAttribute('aria-label', label);
+      toggle.setAttribute('title', label);
+    }
+
+    syncThemeLabel();
     toggle.addEventListener('click', () => {
       const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
       root.setAttribute('data-theme', next);
       localStorage.setItem('theme', next);
+      syncThemeLabel();
     });
   }
 

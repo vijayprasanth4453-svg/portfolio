@@ -15,6 +15,9 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const isDev = process.env.NODE_ENV !== 'production';
 
+// Required on Render — sits behind a reverse proxy (fixes rate-limit X-Forwarded-For error)
+app.set('trust proxy', 1);
+
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((o) => o.trim())

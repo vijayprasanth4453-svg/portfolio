@@ -24,25 +24,53 @@ function isEmailConfigured() {
   return Boolean(user && pass && !PLACEHOLDER_PASSWORDS.has(pass));
 }
 
-function createTransporter() {
+function createTransporter(portOverride) {
   const user = process.env.GMAIL_USER || process.env.SMTP_USER;
   const pass = normalizeSecret(process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS);
+  const smtpOpts = {
+    auth: { user, pass },
+    family: 4,
+    connectionTimeout: 25000,
+    greetingTimeout: 25000,
+    socketTimeout: 30000,
+  };
 
   if (process.env.SMTP_HOST) {
+    const port = portOverride || Number(process.env.SMTP_PORT) || 587;
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: Number(process.env.SMTP_PORT) === 465,
-      auth: { user, pass },
+      port,
+      secure: port === 465,
+      ...smtpOpts,
     });
   }
 
+  // Gmail — port 465 works more reliably on cloud hosts (Render often times out on 587)
+  const port = portOverride || Number(process.env.GMAIL_SMTP_PORT) || 465;
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    auth: { user, pass },
+    port,
+    secure: port === 465,
+    ...smtpOpts,
   });
+}
+
+async function sendMailWithFallback(mailOptions) {
+  const ports = process.env.SMTP_HOST
+    ? [Number(process.env.SMTP_PORT) || 587]
+    : [465, 587];
+  let lastErr;
+  for (const port of ports) {
+    try {
+      const transporter = createTransporter(port);
+      await transporter.sendMail(mailOptions);
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`SMTP port ${port} failed:`, err.message);
+    }
+  }
+  throw lastErr;
 }
 
 function storeMessage(entry) {
@@ -110,11 +138,10 @@ async function submitContact(req, res) {
   }
 
   try {
-    const transporter = createTransporter();
     const fromAddr = process.env.GMAIL_USER || process.env.SMTP_USER;
     const toAddr = process.env.CONTACT_RECEIVER || fromAddr;
 
-    await transporter.sendMail({
+    await sendMailWithFallback({
       from: `"Portfolio Contact" <${fromAddr}>`,
       to: toAddr,
       replyTo: email,
@@ -122,7 +149,7 @@ async function submitContact(req, res) {
       html: ownerEmail({ name, email, subject, message }),
     });
 
-    await transporter.sendMail({
+    await sendMailWithFallback({
       from: `"V. Vijayprasanth" <${fromAddr}>`,
       to: email,
       subject: 'Thanks for contacting V. Vijayprasanth',
@@ -146,4 +173,4 @@ async function submitContact(req, res) {
   }
 }
 
-module.exports = { submitContact, isEmailConfigured, createTransporter };
+module.exports = { submitContact, isEmailConfigured, createTransporter, sendMailWithFallback };
